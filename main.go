@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
+	"text/template"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +35,11 @@ import (
 	"github.com/spotahome/kooper/operator/handler"
 	"github.com/spotahome/kooper/operator/retrieve"
 	"gopkg.in/yaml.v2"
+)
+
+const (
+	DefaultNameTemplate        = "{{.Name}}"
+	DefaultDescriptionTemplate = "{{.Spec.Type}} in namespace {{.Namespace}}"
 )
 
 var (
@@ -60,14 +67,15 @@ func getSubnet(client *phpipam.Client, cidr string) (*phpipam.Subnet, error) {
 	return &subnets.Data[0], nil
 }
 
-func createIP(client *phpipam.Client, subnet, ip, hostname string) error {
+func createIP(client *phpipam.Client, subnet, ip, hostname, description string) error {
 	var out phpipam.IPAddressPatchResponse
 	url := fmt.Sprintf("addresses/")
 	if err := client.POST(url, map[string]interface{}{
-		"ip":       ip,
-		"hostname": hostname,
-		"subnetId": subnet,
-		"note":     "Added by kube-phpipam",
+		"ip":          ip,
+		"hostname":    hostname,
+		"subnetId":    subnet,
+		"note":        "Added by kube-phpipam",
+		"description": description,
 	}, &out); err != nil {
 		return fmt.Errorf("error adding IP address %q: %v", ip, err)
 	}
@@ -95,12 +103,13 @@ func getIP(client *phpipam.Client, ip string) (*phpipam.IPAddress, error) {
 	return &res.Data[0], nil
 }
 
-func setHostname(client *phpipam.Client, id, ip, hostname string) error {
+func setHostname(client *phpipam.Client, id, ip, hostname, description string) error {
 	var out phpipam.IPAddressPatchResponse
 	url := fmt.Sprintf("addresses/%s/", id)
 	if err := client.PATCH(url, map[string]string{
-		"hostname": hostname,
-		"note":     "Added by kube-phpipam",
+		"hostname":    hostname,
+		"note":        "Added by kube-phpipam",
+		"description": description,
 	}, &out); err != nil {
 		return err
 	}
@@ -109,6 +118,18 @@ func setHostname(client *phpipam.Client, id, ip, hostname string) error {
 	}
 	ipCache[ip] = hostname
 	return nil
+}
+
+func executeTemplate(t string, svc *corev1.Service) (string, error) {
+	tmpl, err := template.New("hostname").Parse(t)
+	if err != nil {
+		return "", fmt.Errorf("invalid template %q: %v", t, err)
+	}
+	var b strings.Builder
+	if err := tmpl.Execute(&b, svc); err != nil {
+		return "", fmt.Errorf("unable to execute template %q: %v", t, err)
+	}
+	return b.String(), nil
 }
 
 func main() {
@@ -165,25 +186,46 @@ func main() {
 		AddFunc: func(_ context.Context, obj runtime.Object) error {
 			svc := obj.(*corev1.Service)
 			log.Infof("Service added: %s/%s", svc.Namespace, svc.Name)
-			hostname := fmt.Sprintf("%s/%s", svc.Namespace, svc.Name)
-
-			if l, ok := svc.Annotations["metallb.universe.tf/allow-shared-ip"]; ok {
-				hostname = fmt.Sprintf("%s/%s", svc.Namespace, l)
-			}
 
 			for _, subnet := range config.Subnets {
-				if subnet.Namespace != nil && svc.Namespace != *subnet.Namespace {
+				nameTemplate := subnet.NameTemplate
+				if nameTemplate == "" {
+					nameTemplate = DefaultNameTemplate
+				}
+				hostname, err := executeTemplate(nameTemplate, svc)
+				if err != nil {
+					log.Errorf("%v", err)
+					continue
+				}
+
+				descriptionTemplate := subnet.DescriptionTemplate
+				if descriptionTemplate == "" {
+					descriptionTemplate = DefaultDescriptionTemplate
+				}
+				description, err := executeTemplate(descriptionTemplate, svc)
+				if err != nil {
+					log.Errorf("%v", err)
+					continue
+				}
+
+				/*
+					if l, ok := svc.Annotations["metallb.universe.tf/allow-shared-ip"]; ok {
+						hostname = fmt.Sprintf("%s/%s", svc.Namespace, l)
+					}
+				*/
+
+				if subnet.Namespace != "" && svc.Namespace != subnet.Namespace {
 					//log.Infof("skipping because of wrong namespace")
 					continue
 				}
-				if subnet.Type != nil && svc.Spec.Type != *subnet.Type {
+				if subnet.Type != "" && svc.Spec.Type != subnet.Type {
 					//log.Infof("skipping because of wrong type")
 					continue
 				}
-				if subnet.Regex != nil {
-					re, err := regexp.Compile(*subnet.Regex)
+				if subnet.Regex != "" {
+					re, err := regexp.Compile(subnet.Regex)
 					if err != nil {
-						log.Errorf("Error compiling regex %q for subnet: %v", *subnet.Regex, err)
+						log.Errorf("Error compiling regex %q for subnet: %v", subnet.Regex, err)
 						continue
 					}
 					if !re.MatchString(svc.Name) {
@@ -217,11 +259,6 @@ func main() {
 					appendip(ip)
 				}
 
-				/*
-					b, _ := json.MarshalIndent(svc.Spec, "", "  ")
-					log.Infof("Spec: %s", string(b))
-				*/
-
 				for _, ip := range ips {
 					var res phpipam.IPAddressResponse
 					url := fmt.Sprintf("addresses/search/%s/", ip)
@@ -232,33 +269,38 @@ func main() {
 					}
 					if res.Code != 200 {
 						log.Infof("IP address %s not found in phpIPAM, adding to subnet %s with hostname %s", ip, ipamSubnet.ID, hostname)
-						if err := createIP(client, ipamSubnet.ID, ip, hostname); err != nil {
+						if err := createIP(client, ipamSubnet.ID, ip, hostname, description); err != nil {
 							log.Errorf("Error creating IP in phpIPAM: %v", err)
 						}
 						continue
 					}
-					/*
-						b, _ := json.MarshalIndent(res, "", "  ")
-						log.Infof("%s", string(b))
-					*/
 
-					var found bool
+					var change bool
 					for _, foundIP := range res.Data {
 						if foundIP.Hostname == nil {
-							continue
-						}
-						if foundIP.IP == ip && *foundIP.Hostname == hostname {
-							found = true
+							change = true
 							break
 						}
+						if *foundIP.Hostname != hostname {
+							change = true
+							break
+						}
+
+						var fd string
+						if foundIP.Description != nil {
+							fd = *foundIP.Description
+						}
+						if description != fd {
+							change = true
+						}
 					}
-					if found {
+					if !change {
 						//log.Infof("IP %s already has the right allocation in phpipam", ip)
 						ipCache[ip] = hostname
 						continue
 					}
 
-					if err := setHostname(client, res.Data[0].ID, ip, hostname); err != nil {
+					if err := setHostname(client, res.Data[0].ID, ip, hostname, description); err != nil {
 						log.Errorf("Error from phpIPAM patching IP address %s: %v", ip, err)
 						continue
 					}

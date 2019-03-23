@@ -12,9 +12,11 @@ type Config struct {
 		Password string
 	}
 	Subnets []struct {
-		CIDR      string `yaml:"cidr"`
-		Namespace *string
-		Type      *corev1.ServiceType
-		Regex     *string
+		CIDR                string `yaml:"cidr"`
+		Namespace           string
+		Type                corev1.ServiceType
+		Regex               string
+		NameTemplate        string `yaml:"nameTemplate"`
+		DescriptionTemplate string `yaml:"descriptionTemplate"`
 	} `yaml:"subnets"`
 }
