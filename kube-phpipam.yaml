@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-phpipam
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: kube-phpipam
+rules:
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "watch", "list"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-phpipam
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kube-phpipam
+subjects:
+- kind: ServiceAccount
+  name: kube-phpipam
+  namespace: default
+- kind: ServiceAccount
+  name: kube-phpipam
+  namespace: kube-system
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-phpipam
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube-phpipam
+  template:
+    metadata:
+      labels:
+        app: kube-phpipam
+      name: kube-phpipam
+    spec:
+      serviceAccount: kube-phpipam
+      restartPolicy: Always
+      containers:
+      - name: backend
+        image: registry.dparrish.com/kube-phpipam:latest
+        args:
+          - /app/kube-phpipam
+          - --config=/config/config.yaml
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        resources:
+          requests:
+            memory: "50Mi"
+            cpu: 0.05
+          limits:
+            memory: "100Mi"
+            cpu: 0.1
+      volumes:
+        - name: config
+          configMap:
+            name: kube-phpipam-config
+

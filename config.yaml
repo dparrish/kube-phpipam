@@ -1,0 +1,10 @@
+phpipam:
+  host: http://phpipam.default.svc.local/
+  appId: kubephpipam
+  username: kubephpipam
+  password: yourpasswordgoeshere
+subnets:
+  - cidr: 10.4.0.0/24
+    type: LoadBalancer
+  - cidr: 10.96.0.0/12
+    type: ClusterIP
