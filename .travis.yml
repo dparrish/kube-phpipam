@@ -1,10 +1,11 @@
 language: go
 go:
 - 1.12.x
+- master
 services:
 - docker
 script:
-- docker build -t dparrish/kube-phpipam:`head -1 CHANGELOG | cut -d' ' -f21` .
+- GO111MODULE=on docker build -t dparrish/kube-phpipam:`head -1 CHANGELOG | cut -d' ' -f21` .
 - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 - docker push dparrish/kube-phpipam:`head -1 CHANGELOG | cut -d' ' -f21` 
 env:

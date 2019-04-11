@@ -1,3 +1,5 @@
+[https://travis-ci.com/dparrish/kube-phpipam.svg?branch=master]
+
 # Kube-phpIPAM
 
 This controller listens to the Kubernetes API for changes in Services. Services
