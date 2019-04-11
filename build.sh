@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION=`head -1 CHANGELOG | cut -d' ' -f21`
+VERSION=`head -1 CHANGELOG | cut -d' ' -f2`
 echo "Building version $VERSION"
 
 docker build -t dparrish/kube-phpipam:$VERSION .
