@@ -3,6 +3,7 @@ go:
 - 1.12.x
 services:
 - docker
+install: true
 script:
 - ./build.sh
 env:
