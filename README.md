@@ -1,4 +1,4 @@
-[https://travis-ci.com/dparrish/kube-phpipam.svg?branch=master]
+![Build status](https://travis-ci.com/dparrish/kube-phpipam.svg?branch=master)
 
 # Kube-phpIPAM
 
