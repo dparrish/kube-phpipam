@@ -1,0 +1,12 @@
+language: go
+go:
+- 1.12.x
+services:
+- docker
+script:
+- docker build -t dparrish/kube-phpipam:`head -1 CHANGELOG | cut -d' ' -f21` .
+- echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+- docker push dparrish/kube-phpipam:`head -1 CHANGELOG | cut -d' ' -f21` 
+env:
+  global:
+    secure: fMpF7h3/acIeXoOYt9BUwT0q+u1eY/C33P241olWGIoSPWlIXPFvlHufbS1ubrqFjUoeSby6N5VkIuk0uREyrYC6t/1Zp2Rj/XZOqDDE/kHsWxugrd7yNp4Ws8jYV6E7vTUecrA5qZ5seld2ZATPbMSxSwlMqvqSysL1o/N9sIcxrMaLF8DgCrofSYCEupLJaC2Vm8NqzVqHmRuLZS7yJHQKJYaaI7spTl4N0EGTxdT9mOCnt9pfdaj9hNOjylpNmKtq0PttMvKoymSQKezG6GAAC3dDhyZkclaKWUHQx8/TIM99aKGpx+A2hGEi+IdZwfqYeNqvLBwCg1a8xvPOhF3VFxODtbl5E+eE5/ZtoovRfw6OjP1KfjeniHF+Jrk8ie4aHF6l0q7PvNPMjNTxyXIAZnryqNoi+DJvl/6l6drY7wGy2UmvKku7PFBP5a7gczCqD18W7MHFDUFL3bdlS4jftfqoP+DX85XXl48UY0bKSotRIu5mlpMSDBWcB7/N7lbA/rny+CuVRML1eP35JRBo/3gfoP0jaNXb3zE9BWfc5ucM65aRp2JhNfL20QcKExqMj6aSVqD5gh2hwhkcsNm90ObACzeUcaLkUXRoTnBzhbro0c7L/gcD2lZCJkH4YJmuWOPN4WfBln655Lb5ShKHvWmDrHr7VTgVPsqmiOY=
